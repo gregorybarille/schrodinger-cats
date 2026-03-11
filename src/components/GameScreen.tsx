@@ -1,39 +1,49 @@
-
 import { Button } from '@/components/ui/button';
 import { HandSelector } from './HandSelector';
 import { RevealedCards } from './RevealedCards';
-import { BidInput } from './BidInput';
-import { ProbabilityDisplay } from './ProbabilityDisplay';
-import { GameState, Bid } from '@/lib/gameLogic';
+import { BidScorecard } from './BidDisplay';
+import { GameState, Hand, Bid, getCardsPerPlayer } from '@/lib/gameLogic';
 
 interface GameScreenProps {
   gameState: GameState;
+  numPlayers: number;
   currentBid: Bid | null;
-  onHandChange: (hand: { alive: number; dead: number; schrodinger: number }) => void;
-  onRevealedChange: (revealed: { alive: number; dead: number; schrodinger: number }) => void;
+  onNumPlayersChange: (n: number) => void;
+  onHandChange: (hand: Hand) => void;
+  onRevealedChange: (revealed: Hand) => void;
   onBidChange: (bid: Bid | null) => void;
-  onReset: () => void;
 }
 
 export function GameScreen({
   gameState,
+  numPlayers,
   currentBid,
+  onNumPlayersChange,
   onHandChange,
   onRevealedChange,
   onBidChange,
-  onReset,
 }: GameScreenProps) {
-  const maxBidCount = gameState.numPlayers * gameState.cardsPerPlayer;
-
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-muted-foreground">
-          {gameState.numPlayers} players · {gameState.cardsPerPlayer} cards each
+      {/* Number of players */}
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-medium text-muted-foreground shrink-0">Players:</span>
+        <div className="flex gap-2">
+          {[2, 3, 4, 5, 6].map((n) => (
+            <Button
+              key={n}
+              variant={numPlayers === n ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => onNumPlayersChange(n)}
+              className="w-9 h-9"
+            >
+              {n}
+            </Button>
+          ))}
         </div>
-        <Button variant="outline" size="sm" onClick={onReset}>
-          🔄 New Game
-        </Button>
+        <span className="text-xs text-muted-foreground ml-auto">
+          {gameState.cardsPerPlayer} cards each · {getCardsPerPlayer(numPlayers) * numPlayers} total
+        </span>
       </div>
 
       <HandSelector
@@ -44,20 +54,14 @@ export function GameScreen({
 
       <RevealedCards
         revealed={gameState.revealedCards}
-        deckConfig={gameState.deckConfig}
         myHand={gameState.myHand}
         onChange={onRevealedChange}
       />
 
-      <BidInput
-        bid={currentBid}
-        maxCount={maxBidCount}
-        onChange={onBidChange}
-      />
-
-      <ProbabilityDisplay
+      <BidScorecard
         gameState={gameState}
         currentBid={currentBid}
+        onBidChange={onBidChange}
       />
     </div>
   );

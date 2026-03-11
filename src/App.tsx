@@ -1,40 +1,30 @@
 import { useState } from 'react';
-import { SetupScreen } from './components/SetupScreen';
 import { GameScreen } from './components/GameScreen';
-import { DeckConfig, GameState, Bid, getCardsPerPlayer } from './lib/gameLogic';
+import { StrategicAdvicePanel } from './components/BidDisplay';
+import { GameState, Hand, Bid, getCardsPerPlayer } from './lib/gameLogic';
 import './index.css';
 
-const DEFAULT_DECK: DeckConfig = { alive: 12, dead: 12, schrodinger: 12 };
+const EMPTY_HAND: Hand = { alive: 0, dead: 0, emptyBox: 0, schrodinger: 0 };
 
 function App() {
-  const [screen, setScreen] = useState<'setup' | 'game'>('setup');
   const [numPlayers, setNumPlayers] = useState(4);
-  const [deckConfig, setDeckConfig] = useState<DeckConfig>(DEFAULT_DECK);
+  const [currentBid, setCurrentBid] = useState<Bid | null>(null);
   const [gameState, setGameState] = useState<GameState>({
     numPlayers: 4,
-    deckConfig: DEFAULT_DECK,
     cardsPerPlayer: getCardsPerPlayer(4),
-    myHand: { alive: 0, dead: 0, schrodinger: 0 },
-    revealedCards: { alive: 0, dead: 0, schrodinger: 0 },
+    myHand: EMPTY_HAND,
+    revealedCards: EMPTY_HAND,
   });
-  const [currentBid, setCurrentBid] = useState<Bid | null>(null);
 
-  const handleStartGame = () => {
-    const cardsPerPlayer = getCardsPerPlayer(numPlayers);
+  const handleNumPlayersChange = (n: number) => {
+    setNumPlayers(n);
+    setCurrentBid(null);
     setGameState({
-      numPlayers,
-      deckConfig,
-      cardsPerPlayer,
-      myHand: { alive: 0, dead: 0, schrodinger: 0 },
-      revealedCards: { alive: 0, dead: 0, schrodinger: 0 },
+      numPlayers: n,
+      cardsPerPlayer: getCardsPerPlayer(n),
+      myHand: EMPTY_HAND,
+      revealedCards: EMPTY_HAND,
     });
-    setCurrentBid(null);
-    setScreen('game');
-  };
-
-  const handleReset = () => {
-    setScreen('setup');
-    setCurrentBid(null);
   };
 
   const updateGameState = (partial: Partial<GameState>) => {
@@ -44,39 +34,39 @@ function App() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50">
       <header className="sticky top-0 z-10 bg-white/90 backdrop-blur border-b shadow-sm">
-        <div className="max-w-lg mx-auto px-4 py-3 flex items-center gap-3">
-          <span className="text-2xl">🐱</span>
-          <div>
-            <h1 className="text-lg font-bold leading-tight">Schrödinger's Cats</h1>
-            <p className="text-xs text-muted-foreground">Probability Calculator</p>
-          </div>
-          <div className="ml-auto flex gap-1">
-            <span className="text-xl">💀</span>
-            <span className="text-xl">⚡</span>
-          </div>
+        <div className="max-w-lg mx-auto px-4 py-3">
+          <h1 className="text-lg font-bold leading-tight">Schrödinger's Cats</h1>
+          <p className="text-xs text-muted-foreground">Probability Calculator</p>
         </div>
       </header>
 
-      <main className="max-w-lg mx-auto px-4 py-6">
-        {screen === 'setup' ? (
-          <SetupScreen
-            numPlayers={numPlayers}
-            deckConfig={deckConfig}
-            onNumPlayersChange={setNumPlayers}
-            onDeckConfigChange={setDeckConfig}
-            onStartGame={handleStartGame}
-          />
-        ) : (
+      {/* Outer wrapper: wider than main so the advice panel has room to the right */}
+      <div className="flex justify-center gap-4 px-4 py-6">
+        {/* Center column: the actual main content, same width as before */}
+        <main className="w-full max-w-lg shrink-0">
           <GameScreen
             gameState={gameState}
+            numPlayers={numPlayers}
             currentBid={currentBid}
-            onHandChange={(hand) => updateGameState({ myHand: hand })}
+            onNumPlayersChange={handleNumPlayersChange}
+            onHandChange={(myHand) => updateGameState({ myHand })}
             onRevealedChange={(revealedCards) => updateGameState({ revealedCards })}
             onBidChange={setCurrentBid}
-            onReset={handleReset}
           />
-        )}
-      </main>
+        </main>
+
+        {/* Right side: strategic advice, sticky so it stays in view while scrolling */}
+        {/* pt-[52px] = players row height (36px) + space-y-4 gap (16px), aligns with My Hand */}
+        <aside className="hidden lg:block pt-[52px]">
+          <div className="sticky top-20">
+            <StrategicAdvicePanel
+              gameState={gameState}
+              currentBid={currentBid}
+              onBidChange={setCurrentBid}
+            />
+          </div>
+        </aside>
+      </div>
 
       <footer className="text-center py-4 text-xs text-muted-foreground">
         Schrödinger's Cats © Amigo Spiele · Probability calculator for personal use
