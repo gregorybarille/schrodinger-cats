@@ -53,18 +53,33 @@ interface BidPanelProps {
 
 // ─── Prob bar ───────────────────────────────────────────────────────────────
 
-function ProbBar({ probability, recommendation }: { probability: number; recommendation: string }) {
-  const pct = Math.round(probability * 100);
+function DualProbBars({ base, adjusted, recommendation }: { base: number; adjusted: number; recommendation: string }) {
+  const basePct = Math.round(base * 100);
+  const adjPct = Math.round(adjusted * 100);
   const barColor =
     recommendation === 'safe'  ? 'bg-green-500' :
     recommendation === 'risky' ? 'bg-yellow-500' :
                                  'bg-red-500';
+  const adjBarColor =
+    adjusted >= 0.6 ? 'bg-green-400' :
+    adjusted >= 0.4 ? 'bg-yellow-400' :
+                      'bg-red-400';
   return (
-    <div className="flex items-center gap-2">
-      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
-        <div className={cn('h-full rounded-full transition-all', barColor)} style={{ width: `${pct}%` }} />
+    <div className="space-y-0.5">
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-muted-foreground w-7 shrink-0">Base</span>
+        <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+          <div className={cn('h-full rounded-full transition-all', barColor)} style={{ width: `${basePct}%` }} />
+        </div>
+        <span className="text-[10px] font-bold w-7 text-right tabular-nums">{basePct}%</span>
       </div>
-      <span className="text-xs font-bold w-8 text-right tabular-nums">{pct}%</span>
+      <div className="flex items-center gap-2">
+        <span className="text-[10px] text-muted-foreground w-7 shrink-0">Adj.</span>
+        <div className="flex-1 h-1.5 bg-gray-200 rounded-full overflow-hidden">
+          <div className={cn('h-full rounded-full transition-all', adjBarColor)} style={{ width: `${adjPct}%` }} />
+        </div>
+        <span className="text-[10px] font-bold w-7 text-right tabular-nums">{adjPct}%</span>
+      </div>
     </div>
   );
 }
@@ -138,10 +153,10 @@ function Scoreboard({ gameState, currentBid, onBidChange }: BidPanelProps) {
                 <td key={ci} className="p-0">
                   <button
                     onClick={() => onBidChange(isCurrent ? null : slot)}
-                    title={`${slot.count}× ${typeLabel[slot.type]} — ${analysis ? Math.round(analysis.probability * 100) + '%' : ''}`}
+                    title={`${slot.count}× ${typeLabel[slot.type]} — ${analysis ? Math.round(analysis.probability * 100) + '% base / ' + Math.round(analysis.adjustedProbability * 100) + '% adj.' : ''}`}
                     className={cn(
                       'w-full rounded text-xs font-bold tabular-nums py-0.5 transition-all leading-tight',
-                      analysis ? cellBg(analysis.probability) : 'bg-muted',
+                      analysis ? cellBg(analysis.adjustedProbability) : 'bg-muted',
                       isPast && 'opacity-25',
                       isCurrent && 'ring-2 ring-offset-1 ring-indigo-600 opacity-100 scale-105 shadow-sm z-10 relative',
                     )}
@@ -200,7 +215,7 @@ export function StrategicAdvicePanel({ gameState, currentBid, onBidChange }: Bid
   const advice = adviseBids(gameState, currentBid, 3);
 
   return (
-    <Card className="w-52">
+    <Card>
       <CardHeader className="pb-2 pt-4 px-3">
         <CardTitle className="text-sm">Strategic advice</CardTitle>
         {currentAnalysis && (
@@ -212,7 +227,7 @@ export function StrategicAdvicePanel({ gameState, currentBid, onBidChange }: Bid
               </span>
               <RecommendationBadge recommendation={currentAnalysis.recommendation} />
             </div>
-            <ProbBar probability={currentAnalysis.probability} recommendation={currentAnalysis.recommendation} />
+            <DualProbBars base={currentAnalysis.probability} adjusted={currentAnalysis.adjustedProbability} recommendation={currentAnalysis.recommendation} />
           </div>
         )}
         {!currentBid && (
@@ -248,7 +263,7 @@ export function StrategicAdvicePanel({ gameState, currentBid, onBidChange }: Bid
                       <RecommendationBadge recommendation={bidAnalysis.recommendation} />
                     </div>
                   </div>
-                  <ProbBar probability={item.ownProb} recommendation={bidAnalysis.recommendation} />
+                  <DualProbBars base={item.ownProb} adjusted={item.ownAdjustedProb} recommendation={bidAnalysis.recommendation} />
                   <p className="text-xs text-muted-foreground mt-1 leading-tight">{item.reason}</p>
                 </button>
               );

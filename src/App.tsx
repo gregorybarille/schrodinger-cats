@@ -1,7 +1,10 @@
 import { useState } from 'react';
 import { GameScreen } from './components/GameScreen';
-import { StrategicAdvicePanel } from './components/BidDisplay';
-import { GameState, Hand, Bid, getCardsPerPlayer } from './lib/gameLogic';
+import { BidScorecard, StrategicAdvicePanel } from './components/BidDisplay';
+import {
+  GameState, Hand, Bid, DiscardPile, PhysicistState,
+  getCardsPerPlayer, EMPTY_DISCARD, EMPTY_PHYSICIST_STATE,
+} from './lib/gameLogic';
 import './index.css';
 
 const EMPTY_HAND: Hand = { alive: 0, dead: 0, emptyBox: 0, schrodinger: 0 };
@@ -14,6 +17,8 @@ function App() {
     cardsPerPlayer: getCardsPerPlayer(4),
     myHand: EMPTY_HAND,
     revealedCards: EMPTY_HAND,
+    discardPile: EMPTY_DISCARD,
+    physicistState: EMPTY_PHYSICIST_STATE,
   });
 
   const handleNumPlayersChange = (n: number) => {
@@ -24,6 +29,8 @@ function App() {
       cardsPerPlayer: getCardsPerPlayer(n),
       myHand: EMPTY_HAND,
       revealedCards: EMPTY_HAND,
+      discardPile: EMPTY_DISCARD,
+      physicistState: EMPTY_PHYSICIST_STATE,
     });
   };
 
@@ -46,18 +53,32 @@ function App() {
           <GameScreen
             gameState={gameState}
             numPlayers={numPlayers}
-            currentBid={currentBid}
             onNumPlayersChange={handleNumPlayersChange}
             onHandChange={(myHand) => updateGameState({ myHand })}
             onRevealedChange={(revealedCards) => updateGameState({ revealedCards })}
-            onBidChange={setCurrentBid}
+            onDiscardChange={(discardPile: DiscardPile) => updateGameState({ discardPile })}
+            onPhysicistChange={(physicistState: PhysicistState) => updateGameState({ physicistState })}
           />
+
+          {/* Scorecard in main column — visible only on small screens where aside is hidden */}
+          <div className="mt-4 lg:hidden">
+            <BidScorecard
+              gameState={gameState}
+              currentBid={currentBid}
+              onBidChange={setCurrentBid}
+            />
+          </div>
         </main>
 
-        {/* Right side: strategic advice, anchored to the right edge of main */}
+        {/* Right side: scorecard + strategic advice, anchored to the right edge of main */}
         {/* top offset: py-6 (24px) + players row (36px) + space-y-4 gap (16px) = 76px, aligns with My Hand */}
-        <aside className="hidden lg:block absolute top-[76px] left-full pl-4">
-          <div className="sticky top-20">
+        <aside className="hidden lg:block absolute top-[76px] left-full pl-4 w-[280px]">
+          <div className="sticky top-20 space-y-4">
+            <BidScorecard
+              gameState={gameState}
+              currentBid={currentBid}
+              onBidChange={setCurrentBid}
+            />
             <StrategicAdvicePanel
               gameState={gameState}
               currentBid={currentBid}

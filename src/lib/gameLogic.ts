@@ -24,11 +24,87 @@ export interface Hand {
   schrodinger: number;
 }
 
+// ─── Discard pile ──────────────────────────────────────────────────────────
+
+export interface DiscardPile {
+  alive: number;
+  dead: number;
+  emptyBox: number;
+  schrodinger: number;
+  unknown: number; // cards in the discard we haven't seen
+}
+
+export const EMPTY_DISCARD: DiscardPile = {
+  alive: 0,
+  dead: 0,
+  emptyBox: 0,
+  schrodinger: 0,
+  unknown: 0,
+};
+
+// ─── Physicist Cats ────────────────────────────────────────────────────────
+
+export type PhysicistId =
+  | 'pounce'       // Cecilia Pounce-Gaposchkin — +2 alive cats
+  | 'goeppert'     // Maria Goeppert-Meower — +1 box
+  | 'purrie'       // Marie Purrie — discard all revealed alive
+  | 'felidae'      // Michael Felidae — discard all revealed dead
+  | 'feyncat'      // Richard Feyncat — Heisenberg don't count
+  | 'prride'       // Sally Prride — look at discard pile
+  | 'mewton'       // Sir Isaac Mewton — draw 2 cards
+  | 'felinestein'  // Albert Felinestein — swap entire hand
+  | 'pawking'      // Stephen Pawking — skip one turn
+  | 'tabby';       // Neil deGrasse Tabby — copy a face-up physicist
+
+export interface PhysicistCat {
+  id: PhysicistId;
+  name: string;
+  shortName: string;
+  effect: string;
+}
+
+export const PHYSICIST_CATS: PhysicistCat[] = [
+  { id: 'pounce',      name: 'Cecilia Pounce-Gaposchkin', shortName: 'Pounce',      effect: '+2 alive cats' },
+  { id: 'goeppert',    name: 'Maria Goeppert-Meower',     shortName: 'Goeppert',    effect: '+1 box' },
+  { id: 'purrie',      name: 'Marie Purrie',              shortName: 'Purrie',      effect: 'Discard all revealed alive' },
+  { id: 'felidae',     name: 'Michael Felidae',           shortName: 'Felidae',     effect: 'Discard all revealed dead' },
+  { id: 'feyncat',     name: 'Richard Feyncat',           shortName: 'Feyncat',     effect: 'Heisenberg don\'t count' },
+  { id: 'prride',      name: 'Sally Prride',              shortName: 'Prride',      effect: 'Look at discard pile' },
+  { id: 'mewton',      name: 'Sir Isaac Mewton',          shortName: 'Mewton',      effect: 'Draw 2 cards' },
+  { id: 'felinestein', name: 'Albert Felinestein',        shortName: 'Felinestein', effect: 'Swap entire hand' },
+  { id: 'pawking',     name: 'Stephen Pawking',           shortName: 'Pawking',     effect: 'Skip one turn' },
+  { id: 'tabby',       name: 'Neil deGrasse Tabby',       shortName: 'Tabby',       effect: 'Copy a face-up physicist' },
+];
+
+export function getPhysicist(id: PhysicistId): PhysicistCat {
+  return PHYSICIST_CATS.find((p) => p.id === id)!;
+}
+
+export interface PhysicistState {
+  myPhysicist: PhysicistId | null;
+  myPhysicistPlayed: boolean;
+  // Other physicists that have been played/revealed this round
+  playedPhysicists: PhysicistId[];
+  // Whether the next player (right after me) has an unrevealed physicist
+  nextPlayerHasUnrevealedPhysicist: boolean;
+}
+
+export const EMPTY_PHYSICIST_STATE: PhysicistState = {
+  myPhysicist: null,
+  myPhysicistPlayed: false,
+  playedPhysicists: [],
+  nextPlayerHasUnrevealedPhysicist: true,
+};
+
+// ─── Game state ────────────────────────────────────────────────────────────
+
 export interface GameState {
   numPlayers: number;
   cardsPerPlayer: number;
   myHand: Hand;
   revealedCards: Hand;
+  discardPile: DiscardPile;
+  physicistState: PhysicistState;
 }
 
 export interface Bid {
@@ -39,6 +115,7 @@ export interface Bid {
 export interface BidAnalysis {
   bid: Bid;
   probability: number;
+  adjustedProbability: number; // considering exchanges + physicist effects
   recommendation: 'safe' | 'risky' | 'challenge';
 }
 
@@ -94,39 +171,209 @@ export function getQualifyingInHand(hand: Hand, type: BiddableType): number {
 
 // ─── Probability engine ────────────────────────────────────────────────────
 
+/**
+ * Base probability: ignores exchanges and physicist effects.
+ * Uses the cards we know about (hand, revealed, known discards) to determine
+ * what's in the unknown pool, then runs hypergeometric.
+ */
 export function calculateBidProbability(state: GameState, bid: Bid): number {
   const deck = FIXED_DECK;
-  const { myHand, revealedCards, numPlayers, cardsPerPlayer } = state;
+  const { myHand, revealedCards, discardPile, numPlayers, cardsPerPlayer } = state;
 
   const totalDeck = deck.alive + deck.dead + deck.emptyBox + deck.schrodinger;
+
+  // Known cards: my hand + revealed + known discards (not unknown discards)
+  const knownDiscards = discardPile.alive + discardPile.dead + discardPile.emptyBox + discardPile.schrodinger;
   const myHandTotal = myHand.alive + myHand.dead + myHand.emptyBox + myHand.schrodinger;
-  const revealedTotal =
-    revealedCards.alive + revealedCards.dead + revealedCards.emptyBox + revealedCards.schrodinger;
+  const revealedTotal = revealedCards.alive + revealedCards.dead + revealedCards.emptyBox + revealedCards.schrodinger;
 
-  const knownTotal = myHandTotal + revealedTotal;
-  const unknownTotal = Math.max(0, totalDeck - knownTotal);
+  // Cards removed from circulation: discards (known + unknown) are not in anyone's hand
+  const totalDiscards = knownDiscards + discardPile.unknown;
+  const cardsInPlay = Math.max(0, totalDeck - totalDiscards);
 
-  const otherPlayersCards = cardsPerPlayer * (numPlayers - 1);
-  const cardsInOtherHands = Math.min(otherPlayersCards, unknownTotal);
+  const unknownTotal = Math.max(0, cardsInPlay - myHandTotal - revealedTotal);
 
-  const myQualifying = getQualifyingInHand(myHand, bid.type);
-  const revealedQualifying = getQualifyingInHand(revealedCards, bid.type);
-  const totalQualifying = getQualifyingInDeck(deck, bid.type);
-  const unknownQualifying = Math.max(0, totalQualifying - myQualifying - revealedQualifying);
+  const otherPlayersCards = Math.max(0, cardsInPlay - myHandTotal - revealedTotal);
+  const cardsInOtherHands = Math.min(cardsPerPlayer * (numPlayers - 1), otherPlayersCards);
 
-  const needed = bid.count - myQualifying;
+  // Apply Feyncat: if played, schrodinger cards don't count toward alive/dead
+  const feyncatActive = isPhysicistActive(state.physicistState, 'feyncat');
+
+  // Apply Purrie: if played, revealed alive don't count
+  const purrieActive = isPhysicistActive(state.physicistState, 'purrie');
+
+  // Apply Felidae: if played, revealed dead don't count
+  const felidaeActive = isPhysicistActive(state.physicistState, 'felidae');
+
+  // Apply Pounce: +2 alive effective revealed
+  const pounceActive = isPhysicistActive(state.physicistState, 'pounce');
+
+  // Apply Goeppert: +1 box effective revealed
+  const goeppertActive = isPhysicistActive(state.physicistState, 'goeppert');
+
+  const myQualifying = getQualifyingInHandWithPhysicists(myHand, bid.type, feyncatActive);
+  const revealedQualifying = getRevealedQualifyingWithPhysicists(
+    revealedCards, bid.type, feyncatActive, purrieActive, felidaeActive, pounceActive, goeppertActive,
+  );
+  const totalQualifying = getQualifyingInDeckWithPhysicists(deck, bid.type, feyncatActive);
+  const discardQualifying = getQualifyingInHandWithPhysicists(
+    { alive: discardPile.alive, dead: discardPile.dead, emptyBox: discardPile.emptyBox, schrodinger: discardPile.schrodinger },
+    bid.type,
+    feyncatActive,
+  );
+  const unknownQualifying = Math.max(0, totalQualifying - myQualifying - revealedQualifying - discardQualifying);
+
+  const needed = bid.count - myQualifying - revealedQualifying;
   if (needed <= 0) return 1;
 
-  return hypergeometricCDF_geq(unknownTotal, unknownQualifying, cardsInOtherHands, needed);
+  return hypergeometricCDF_geq(
+    Math.max(0, unknownTotal),
+    Math.min(unknownQualifying, unknownTotal),
+    Math.min(cardsInOtherHands, unknownTotal),
+    needed,
+  );
+}
+
+/**
+ * Exchange-adjusted probability: assumes that revealed cards were exchanged,
+ * meaning the player who revealed alive cats likely discarded dead cats (and vice versa).
+ * This shifts the pool composition.
+ */
+export function calculateExchangeAdjustedProbability(state: GameState, bid: Bid): number {
+  const { revealedCards, discardPile } = state;
+
+  // Estimate what was likely discarded based on reveals:
+  //   - Revealed alive → probably discarded dead
+  //   - Revealed dead → probably discarded alive
+  //   - Revealed box/schrodinger → could be anything (no adjustment)
+  const inferredDiscardedDead = revealedCards.alive;
+  const inferredDiscardedAlive = revealedCards.dead;
+
+  // Create an adjusted discard pile with the inferred discards added
+  const adjustedDiscard: DiscardPile = {
+    alive: discardPile.alive + inferredDiscardedAlive,
+    dead: discardPile.dead + inferredDiscardedDead,
+    emptyBox: discardPile.emptyBox,
+    schrodinger: discardPile.schrodinger,
+    // Reduce unknown by the amount we've now inferred (but don't go below 0)
+    unknown: Math.max(0, discardPile.unknown - inferredDiscardedAlive - inferredDiscardedDead),
+  };
+
+  const adjustedState: GameState = {
+    ...state,
+    discardPile: adjustedDiscard,
+  };
+
+  return calculateBidProbability(adjustedState, bid);
+}
+
+// Physicist-aware qualifying helpers
+
+function getQualifyingInDeckWithPhysicists(deck: DeckConfig, type: BiddableType, feyncatActive: boolean): number {
+  if (feyncatActive) {
+    // Schrodinger cards don't count
+    if (type === 'alive') return deck.alive;
+    if (type === 'dead') return deck.dead;
+    return deck.emptyBox;
+  }
+  return getQualifyingInDeck(deck, type);
+}
+
+function getQualifyingInHandWithPhysicists(hand: Hand, type: BiddableType, feyncatActive: boolean): number {
+  if (feyncatActive) {
+    if (type === 'alive') return hand.alive;
+    if (type === 'dead') return hand.dead;
+    return hand.emptyBox;
+  }
+  return getQualifyingInHand(hand, type);
+}
+
+function getRevealedQualifyingWithPhysicists(
+  revealed: Hand,
+  type: BiddableType,
+  feyncatActive: boolean,
+  purrieActive: boolean,
+  felidaeActive: boolean,
+  pounceActive: boolean,
+  goeppertActive: boolean,
+): number {
+  let count = getQualifyingInHandWithPhysicists(revealed, type, feyncatActive);
+
+  // Purrie: revealed alive cats don't count
+  if (purrieActive && type === 'alive') {
+    count = Math.max(0, count - revealed.alive);
+  }
+
+  // Felidae: revealed dead cats don't count
+  if (felidaeActive && type === 'dead') {
+    count = Math.max(0, count - revealed.dead);
+  }
+
+  // Pounce: +2 alive
+  if (pounceActive && type === 'alive') {
+    count += 2;
+  }
+
+  // Goeppert: +1 box
+  if (goeppertActive && type === 'emptyBox') {
+    count += 1;
+  }
+
+  return count;
+}
+
+function isPhysicistActive(ps: PhysicistState, id: PhysicistId): boolean {
+  // Active if it's my physicist and I've played it, or if another player played it
+  if (ps.myPhysicist === id && ps.myPhysicistPlayed) return true;
+  return ps.playedPhysicists.includes(id);
+}
+
+// Probability that a given unplayed physicist is still in the game
+// (i.e. held by one of the other players, not set aside).
+export function physicistInGameProbability(state: GameState): Map<PhysicistId, number> {
+  const { numPlayers, physicistState } = state;
+  const known: Set<PhysicistId> = new Set();
+
+  if (physicistState.myPhysicist) known.add(physicistState.myPhysicist);
+  physicistState.playedPhysicists.forEach((id) => known.add(id));
+
+  const totalPhysicists = PHYSICIST_CATS.length; // 10
+  const unknownPhysicists = totalPhysicists - known.size;
+  // Slots held by other players (excluding mine)
+  const otherPlayerSlots = numPlayers - 1;
+  // Slots already accounted for by played physicists from other players
+  const otherKnown = physicistState.playedPhysicists.length;
+  const unknownOtherSlots = Math.max(0, otherPlayerSlots - otherKnown);
+
+  const result = new Map<PhysicistId, number>();
+
+  for (const cat of PHYSICIST_CATS) {
+    if (known.has(cat.id)) {
+      // Already known: probability is 1 if in play, but we skip these
+      result.set(cat.id, 1);
+    } else if (unknownPhysicists <= 0) {
+      result.set(cat.id, 0);
+    } else {
+      // Probability that this specific unknown physicist is held by one of
+      // the remaining unknown player slots
+      const prob = Math.min(1, unknownOtherSlots / unknownPhysicists);
+      result.set(cat.id, prob);
+    }
+  }
+
+  return result;
 }
 
 export function analyzeBid(state: GameState, bid: Bid): BidAnalysis {
   const probability = calculateBidProbability(state, bid);
+  const adjustedProbability = calculateExchangeAdjustedProbability(state, bid);
   let recommendation: 'safe' | 'risky' | 'challenge';
-  if (probability >= 0.6) recommendation = 'safe';
-  else if (probability >= 0.4) recommendation = 'risky';
+  // Use the worse of the two probabilities for the recommendation
+  const worstCase = Math.min(probability, adjustedProbability);
+  if (worstCase >= 0.6) recommendation = 'safe';
+  else if (worstCase >= 0.4) recommendation = 'risky';
   else recommendation = 'challenge';
-  return { bid, probability, recommendation };
+  return { bid, probability, adjustedProbability, recommendation };
 }
 
 // ─── Bid sequence ──────────────────────────────────────────────────────────
@@ -226,6 +473,7 @@ export function buildBidRows(maxCards: number): BidRow[] {
 export interface StrategicAdvice {
   bid: Bid;
   ownProb: number;
+  ownAdjustedProb: number;
   // Average probability of the next (numPlayers - 1) bids after this one.
   // Low value = opponents likely to challenge before it returns to you.
   pressureScore: number;
@@ -243,14 +491,20 @@ export interface StrategicAdvice {
  * `topN` strategic recommendations.
  *
  * Scoring rationale:
- *   score = 0.5 × ownProb  +  0.3 × pressureScore  +  0.2 × returnSafetyScore
+ *   score = 0.45 × ownProb  +  0.15 × adjustedProb  +  0.25 × pressureScore  +  0.15 × returnSafetyScore
  *
- *   • ownProb (50 %): primary concern — you don't want to lose a challenge.
- *   • pressureScore (30 %): average opponent bid probability after yours;
+ *   • ownProb (45 %): primary concern — you don't want to lose a challenge.
+ *   • adjustedProb (15 %): exchange-adjusted probability.
+ *   • pressureScore (25 %): average opponent bid probability after yours;
  *       LOW pressure = opponents are unlikely to raise = good for you.
  *       We invert: pressureScore = 1 − avgOpponentProb.
- *   • returnSafetyScore (20 %): probability of the bid you'd face if every
+ *   • returnSafetyScore (15 %): probability of the bid you'd face if every
  *       opponent raises; HIGH = you can cope if the turn comes back.
+ *
+ * Additional modifiers from physicist cats:
+ *   • If Felidae/Purrie are unplayed and could be in the game, applies a risk
+ *     penalty to bids of the matching type.
+ *   • If the next player has an unrevealed physicist, slight uncertainty penalty.
  */
 export function adviseBids(
   state: GameState,
@@ -259,40 +513,61 @@ export function adviseBids(
 ): StrategicAdvice[] {
   const maxCards = state.numPlayers * state.cardsPerPlayer;
   const sequence = buildBidSequence(maxCards);
-  const startIdx = currentBidIndex(sequence, currentBid) + 1; // first valid next bid
+  const startIdx = currentBidIndex(sequence, currentBid) + 1;
   const opponents = state.numPlayers - 1;
+
+  // Physicist risk factors
+  const physicistProbs = physicistInGameProbability(state);
+  const purrieRisk = isPhysicistActive(state.physicistState, 'purrie')
+    ? 0 : (physicistProbs.get('purrie') ?? 0);
+  const felidaeRisk = isPhysicistActive(state.physicistState, 'felidae')
+    ? 0 : (physicistProbs.get('felidae') ?? 0);
+  const nextPlayerUnknown = state.physicistState.nextPlayerHasUnrevealedPhysicist;
 
   const results: StrategicAdvice[] = [];
 
   for (let i = startIdx; i < sequence.length; i++) {
     const slot = sequence[i];
     const ownProb = calculateBidProbability(state, slot);
+    const ownAdjustedProb = calculateExchangeAdjustedProbability(state, slot);
 
-    // The next `opponents` bids after this one (what opponents would raise to)
     const opponentSlots = sequence.slice(i + 1, i + 1 + opponents);
     const opponentProbs =
       opponentSlots.length > 0
         ? opponentSlots.map((s) => calculateBidProbability(state, s))
         : [];
 
-    // pressureScore: inverted average opponent probability
-    //   = how likely opponents are to get stuck / challenged on their raises
     const avgOpponentProb =
       opponentProbs.length > 0
         ? opponentProbs.reduce((a, b) => a + b, 0) / opponentProbs.length
         : 0;
     const pressureScore = 1 - avgOpponentProb;
 
-    // returnSafetyScore: probability of the bid you'd face if all opponents raised
     const returnSlot = sequence[i + opponents] ?? null;
     const returnSafetyScore = returnSlot
       ? calculateBidProbability(state, returnSlot)
       : 0;
 
-    const score =
-      0.5 * ownProb + 0.3 * pressureScore + 0.2 * returnSafetyScore;
+    let score =
+      0.45 * ownProb + 0.15 * ownAdjustedProb + 0.25 * pressureScore + 0.15 * returnSafetyScore;
 
-    // Build a concise reason string
+    // Physicist risk penalties
+    // If Purrie is unplayed and could be in the game, alive bids are riskier
+    if (slot.type === 'alive' && purrieRisk > 0) {
+      score -= 0.1 * purrieRisk;
+    }
+    // If Felidae is unplayed and could be in the game, dead bids are riskier
+    if (slot.type === 'dead' && felidaeRisk > 0) {
+      score -= 0.1 * felidaeRisk;
+    }
+    // Next player has unknown physicist — slight uncertainty
+    if (nextPlayerUnknown) {
+      score -= 0.03;
+    }
+
+    score = Math.min(1, Math.max(0, score));
+
+    // Build reason string
     let reason: string;
     if (ownProb >= 0.7 && pressureScore >= 0.5) {
       reason = 'High chance + opponents likely stuck';
@@ -310,10 +585,20 @@ export function adviseBids(
       reason = 'Low chance — may invite challenge';
     }
 
-    results.push({ bid: slot, ownProb, pressureScore, returnSafetyScore, score, reason });
+    // Append physicist warnings
+    if (slot.type === 'alive' && purrieRisk > 0.3) {
+      reason += ' · Purrie risk!';
+    }
+    if (slot.type === 'dead' && felidaeRisk > 0.3) {
+      reason += ' · Felidae risk!';
+    }
+    if (Math.abs(ownProb - ownAdjustedProb) > 0.1) {
+      reason += ' · Exchange shifts odds';
+    }
+
+    results.push({ bid: slot, ownProb, ownAdjustedProb, pressureScore, returnSafetyScore, score, reason });
   }
 
-  // Sort descending by score and return the top N
   results.sort((a, b) => b.score - a.score);
   return results.slice(0, topN);
 }

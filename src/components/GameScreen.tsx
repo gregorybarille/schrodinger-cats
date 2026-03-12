@@ -1,27 +1,28 @@
 import { Button } from '@/components/ui/button';
 import { HandSelector } from './HandSelector';
 import { RevealedCards } from './RevealedCards';
-import { BidScorecard } from './BidDisplay';
-import { GameState, Hand, Bid, getCardsPerPlayer } from '@/lib/gameLogic';
+import { DiscardPileDisplay } from './DiscardPileDisplay';
+import { PhysicistSelector } from './PhysicistSelector';
+import { GameState, Hand, DiscardPile, PhysicistState, getCardsPerPlayer } from '@/lib/gameLogic';
 
 interface GameScreenProps {
   gameState: GameState;
   numPlayers: number;
-  currentBid: Bid | null;
   onNumPlayersChange: (n: number) => void;
   onHandChange: (hand: Hand) => void;
   onRevealedChange: (revealed: Hand) => void;
-  onBidChange: (bid: Bid | null) => void;
+  onDiscardChange: (discard: DiscardPile) => void;
+  onPhysicistChange: (ps: PhysicistState) => void;
 }
 
 export function GameScreen({
   gameState,
   numPlayers,
-  currentBid,
   onNumPlayersChange,
   onHandChange,
   onRevealedChange,
-  onBidChange,
+  onDiscardChange,
+  onPhysicistChange,
 }: GameScreenProps) {
   return (
     <div className="space-y-4">
@@ -58,10 +59,17 @@ export function GameScreen({
         onChange={onRevealedChange}
       />
 
-      <BidScorecard
+      <DiscardPileDisplay
+        discardPile={gameState.discardPile}
+        myHand={gameState.myHand}
+        revealedCards={gameState.revealedCards}
+        onChange={onDiscardChange}
+      />
+
+      <PhysicistSelector
+        physicistState={gameState.physicistState}
         gameState={gameState}
-        currentBid={currentBid}
-        onBidChange={onBidChange}
+        onChange={onPhysicistChange}
       />
     </div>
   );
