@@ -32,7 +32,7 @@ const typeLabel: Record<BiddableType, string> = {
 const typeColor: Record<BiddableType, string> = {
   alive:    'text-green-700',
   dead:     'text-gray-600',
-  emptyBox: 'text-amber-700',
+  emptyBox: 'text-orange-600',
 };
 
 const colHeaderBg = [
@@ -40,7 +40,7 @@ const colHeaderBg = [
   'bg-gray-100 text-gray-700',
   'bg-green-100 text-green-800',
   'bg-gray-100 text-gray-700',
-  'bg-amber-100 text-amber-800',
+  'bg-orange-100 text-orange-700',
 ];
 
 // ─── Shared props ────────────────────────────────────────────────────────────

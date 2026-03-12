@@ -48,8 +48,8 @@ export function HandSelector({ hand, cardsPerPlayer, onChange }: HandSelectorPro
             icon={<IconBox size={24} />}
             count={hand.emptyBox}
             max={Math.min(hand.emptyBox + remaining, FIXED_DECK.emptyBox)}
-            colorClass="text-amber-700"
-            bgClass="bg-amber-50 border-amber-200"
+            colorClass="text-orange-600"
+            bgClass="bg-orange-50 border-orange-200"
             onChange={(v) => onChange({ ...hand, emptyBox: v })}
           />
           <CardCounter
@@ -63,7 +63,7 @@ export function HandSelector({ hand, cardsPerPlayer, onChange }: HandSelectorPro
           />
         </div>
         {remaining > 0 && (
-          <p className="text-sm text-amber-600 mt-2 text-center">
+          <p className="text-sm text-orange-600 mt-2 text-center">
             {remaining} card{remaining !== 1 ? 's' : ''} not yet selected
           </p>
         )}

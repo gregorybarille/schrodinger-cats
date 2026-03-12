@@ -47,8 +47,8 @@ export function RevealedCards({ revealed, myHand, onChange }: RevealedCardsProps
             icon={<IconBox size={24} />}
             count={revealed.emptyBox}
             max={FIXED_DECK.emptyBox - myHand.emptyBox}
-            colorClass="text-amber-700"
-            bgClass="bg-amber-50 border-amber-200"
+            colorClass="text-orange-600"
+            bgClass="bg-orange-50 border-orange-200"
             onChange={(v) => onChange({ ...revealed, emptyBox: v })}
           />
           <CardCounter
