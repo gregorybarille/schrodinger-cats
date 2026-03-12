@@ -73,8 +73,7 @@ function hypergeometricCDF_geq(N: number, K: number, n: number, minK: number): n
 }
 
 export function getCardsPerPlayer(numPlayers: number): number {
-  const mapping: Record<number, number> = { 2: 8, 3: 7, 4: 6, 5: 5, 6: 4 };
-  return mapping[numPlayers] ?? 5;
+  return numPlayers;
 }
 
 // How many cards in the deck qualify for a given bid type.
