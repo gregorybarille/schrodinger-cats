@@ -44,6 +44,12 @@ export const EMPTY_DISCARD: DiscardPile = {
 
 // ─── Physicist Cats ────────────────────────────────────────────────────────
 
+// Three-state lifecycle for each physicist cat card during a round:
+//   idle      — not yet played
+//   active    — played this turn (effect is live)
+//   discarded — used and placed in discard pile
+export type PhysicistActivation = 'idle' | 'active' | 'discarded';
+
 export type PhysicistId =
   | 'pounce'       // Cecilia Pounce-Gaposchkin — +2 alive cats
   | 'goeppert'     // Maria Goeppert-Meower — +1 box
@@ -82,17 +88,15 @@ export function getPhysicist(id: PhysicistId): PhysicistCat {
 
 export interface PhysicistState {
   myPhysicist: PhysicistId | null;
-  myPhysicistPlayed: boolean;
-  // Other physicists that have been played/revealed this round
-  playedPhysicists: PhysicistId[];
+  // Activation state for every physicist — includes mine (active = played this turn)
+  physicistActivations: Partial<Record<PhysicistId, PhysicistActivation>>;
   // Whether the next player (right after me) has an unrevealed physicist
   nextPlayerHasUnrevealedPhysicist: boolean;
 }
 
 export const EMPTY_PHYSICIST_STATE: PhysicistState = {
   myPhysicist: null,
-  myPhysicistPlayed: false,
-  playedPhysicists: [],
+  physicistActivations: {},
   nextPlayerHasUnrevealedPhysicist: true,
 };
 
@@ -102,7 +106,8 @@ export interface GameState {
   numPlayers: number;
   cardsPerPlayer: number;
   myHand: Hand;
-  revealedCards: Hand;
+  myRevealedCards: Hand;   // cards I personally revealed this round
+  revealedCards: Hand;     // cards revealed by other players
   discardPile: DiscardPile;
   physicistState: PhysicistState;
 }
@@ -178,14 +183,22 @@ export function getQualifyingInHand(hand: Hand, type: BiddableType): number {
  */
 export function calculateBidProbability(state: GameState, bid: Bid): number {
   const deck = FIXED_DECK;
-  const { myHand, revealedCards, discardPile, numPlayers, cardsPerPlayer } = state;
+  const { myHand, myRevealedCards, revealedCards, discardPile, numPlayers, cardsPerPlayer } = state;
+
+  // Combine my reveals with other players' reveals into one pool
+  const allRevealed: Hand = {
+    alive:       revealedCards.alive       + myRevealedCards.alive,
+    dead:        revealedCards.dead        + myRevealedCards.dead,
+    emptyBox:    revealedCards.emptyBox    + myRevealedCards.emptyBox,
+    schrodinger: revealedCards.schrodinger + myRevealedCards.schrodinger,
+  };
 
   const totalDeck = deck.alive + deck.dead + deck.emptyBox + deck.schrodinger;
 
   // Known cards: my hand + revealed + known discards (not unknown discards)
   const knownDiscards = discardPile.alive + discardPile.dead + discardPile.emptyBox + discardPile.schrodinger;
   const myHandTotal = myHand.alive + myHand.dead + myHand.emptyBox + myHand.schrodinger;
-  const revealedTotal = revealedCards.alive + revealedCards.dead + revealedCards.emptyBox + revealedCards.schrodinger;
+  const revealedTotal = allRevealed.alive + allRevealed.dead + allRevealed.emptyBox + allRevealed.schrodinger;
 
   // Cards removed from circulation: discards (known + unknown) are not in anyone's hand
   const totalDiscards = knownDiscards + discardPile.unknown;
@@ -213,7 +226,7 @@ export function calculateBidProbability(state: GameState, bid: Bid): number {
 
   const myQualifying = getQualifyingInHandWithPhysicists(myHand, bid.type, feyncatActive);
   const revealedQualifying = getRevealedQualifyingWithPhysicists(
-    revealedCards, bid.type, feyncatActive, purrieActive, felidaeActive, pounceActive, goeppertActive,
+    allRevealed, bid.type, feyncatActive, purrieActive, felidaeActive, pounceActive, goeppertActive,
   );
   const totalQualifying = getQualifyingInDeckWithPhysicists(deck, bid.type, feyncatActive);
   const discardQualifying = getQualifyingInHandWithPhysicists(
@@ -240,14 +253,22 @@ export function calculateBidProbability(state: GameState, bid: Bid): number {
  * This shifts the pool composition.
  */
 export function calculateExchangeAdjustedProbability(state: GameState, bid: Bid): number {
-  const { revealedCards, discardPile } = state;
+  const { revealedCards, myRevealedCards, discardPile } = state;
+
+  // Combine my reveals with others' for the inference
+  const allRevealed: Hand = {
+    alive:       revealedCards.alive       + myRevealedCards.alive,
+    dead:        revealedCards.dead        + myRevealedCards.dead,
+    emptyBox:    revealedCards.emptyBox    + myRevealedCards.emptyBox,
+    schrodinger: revealedCards.schrodinger + myRevealedCards.schrodinger,
+  };
 
   // Estimate what was likely discarded based on reveals:
   //   - Revealed alive → probably discarded dead
   //   - Revealed dead → probably discarded alive
   //   - Revealed box/schrodinger → could be anything (no adjustment)
-  const inferredDiscardedDead = revealedCards.alive;
-  const inferredDiscardedAlive = revealedCards.dead;
+  const inferredDiscardedDead = allRevealed.alive;
+  const inferredDiscardedAlive = allRevealed.dead;
 
   // Create an adjusted discard pile with the inferred discards added
   const adjustedDiscard: DiscardPile = {
@@ -323,9 +344,7 @@ function getRevealedQualifyingWithPhysicists(
 }
 
 function isPhysicistActive(ps: PhysicistState, id: PhysicistId): boolean {
-  // Active if it's my physicist and I've played it, or if another player played it
-  if (ps.myPhysicist === id && ps.myPhysicistPlayed) return true;
-  return ps.playedPhysicists.includes(id);
+  return (ps.physicistActivations[id] ?? 'idle') === 'active';
 }
 
 // Probability that a given unplayed physicist is still in the game
@@ -335,33 +354,108 @@ export function physicistInGameProbability(state: GameState): Map<PhysicistId, n
   const known: Set<PhysicistId> = new Set();
 
   if (physicistState.myPhysicist) known.add(physicistState.myPhysicist);
-  physicistState.playedPhysicists.forEach((id) => known.add(id));
+  // Any physicist with a non-idle activation is known (active or discarded)
+  for (const [id, activation] of Object.entries(physicistState.physicistActivations) as [PhysicistId, PhysicistActivation][]) {
+    if (activation !== 'idle') known.add(id);
+  }
 
   const totalPhysicists = PHYSICIST_CATS.length; // 10
   const unknownPhysicists = totalPhysicists - known.size;
   // Slots held by other players (excluding mine)
   const otherPlayerSlots = numPlayers - 1;
-  // Slots already accounted for by played physicists from other players
-  const otherKnown = physicistState.playedPhysicists.length;
+  // Slots already accounted for by played/discarded physicists from other players
+  const otherKnown = [...known].filter((id) => id !== physicistState.myPhysicist).length;
   const unknownOtherSlots = Math.max(0, otherPlayerSlots - otherKnown);
 
   const result = new Map<PhysicistId, number>();
 
   for (const cat of PHYSICIST_CATS) {
     if (known.has(cat.id)) {
-      // Already known: probability is 1 if in play, but we skip these
       result.set(cat.id, 1);
     } else if (unknownPhysicists <= 0) {
       result.set(cat.id, 0);
     } else {
-      // Probability that this specific unknown physicist is held by one of
-      // the remaining unknown player slots
       const prob = Math.min(1, unknownOtherSlots / unknownPhysicists);
       result.set(cat.id, prob);
     }
   }
 
   return result;
+}
+
+// ─── Situational warnings ──────────────────────────────────────────────────
+
+export interface SituationalWarning {
+  key: string;
+  message: string;
+  severity: 'danger' | 'caution';
+}
+
+export function computeWarnings(state: GameState, currentBid: Bid | null): SituationalWarning[] {
+  const warnings: SituationalWarning[] = [];
+  const probs = physicistInGameProbability(state);
+
+  const allRevealed: Hand = {
+    alive:       state.revealedCards.alive       + state.myRevealedCards.alive,
+    dead:        state.revealedCards.dead        + state.myRevealedCards.dead,
+    emptyBox:    state.revealedCards.emptyBox    + state.myRevealedCards.emptyBox,
+    schrodinger: state.revealedCards.schrodinger + state.myRevealedCards.schrodinger,
+  };
+
+  // Purrie ("Discard all revealed alive"):
+  // Warn whenever there are revealed alive cats in play — the bid type doesn't
+  // matter because the opponent could play Purrie before your turn regardless.
+  const purrieActive = isPhysicistActive(state.physicistState, 'purrie');
+  if (!purrieActive && allRevealed.alive > 0) {
+    const purrieProb = probs.get('purrie') ?? 0;
+    if (purrieProb >= 0.4) {
+      warnings.push({
+        key: 'purrie',
+        message: `"Discard all revealed alive" (${Math.round(purrieProb * 100)}%) — ${allRevealed.alive} revealed alive cat${allRevealed.alive !== 1 ? 's' : ''} could be wiped`,
+        severity: purrieProb >= 0.6 ? 'danger' : 'caution',
+      });
+    }
+  }
+
+  // Felidae ("Discard all revealed dead"):
+  // Same reasoning — warn whenever revealed dead cats exist, regardless of bid type.
+  const felidaeActive = isPhysicistActive(state.physicistState, 'felidae');
+  if (!felidaeActive && allRevealed.dead > 0) {
+    const felidaeProb = probs.get('felidae') ?? 0;
+    if (felidaeProb >= 0.4) {
+      warnings.push({
+        key: 'felidae',
+        message: `"Discard all revealed dead" (${Math.round(felidaeProb * 100)}%) — ${allRevealed.dead} revealed dead cat${allRevealed.dead !== 1 ? 's' : ''} could be wiped`,
+        severity: felidaeProb >= 0.6 ? 'danger' : 'caution',
+      });
+    }
+  }
+
+  // Feyncat ("Heisenberg don't count"):
+  // Only relevant when the current bid is alive or dead AND there are Schrödinger cards
+  // in circulation that currently count toward that bid. Irrelevant for box bids.
+  const feyncatActive = isPhysicistActive(state.physicistState, 'feyncat');
+  const bidUsesSchrodinger = currentBid?.type === 'alive' || currentBid?.type === 'dead';
+  if (!feyncatActive && bidUsesSchrodinger) {
+    const feyncatProb = probs.get('feyncat') ?? 0;
+    const schrodingerInPlay =
+      FIXED_DECK.schrodinger
+      - state.myHand.schrodinger
+      - allRevealed.schrodinger
+      - state.discardPile.schrodinger;
+    // Also count Schrödinger cards in hand that contribute to this bid
+    const schrodingerContributing =
+      schrodingerInPlay + state.myHand.schrodinger + allRevealed.schrodinger;
+    if (feyncatProb >= 0.4 && schrodingerContributing > 0) {
+      warnings.push({
+        key: 'feyncat',
+        message: `"Heisenberg don't count" (${Math.round(feyncatProb * 100)}%) — ${schrodingerContributing} Schrödinger card${schrodingerContributing !== 1 ? 's' : ''} would stop counting toward this bid`,
+        severity: feyncatProb >= 0.6 ? 'danger' : 'caution',
+      });
+    }
+  }
+
+  return warnings;
 }
 
 export function analyzeBid(state: GameState, bid: Bid): BidAnalysis {
@@ -587,10 +681,10 @@ export function adviseBids(
 
     // Append physicist warnings
     if (slot.type === 'alive' && purrieRisk > 0.3) {
-      reason += ' · Purrie risk!';
+      reason += ' · "Discard all revealed alive" risk!';
     }
     if (slot.type === 'dead' && felidaeRisk > 0.3) {
-      reason += ' · Felidae risk!';
+      reason += ' · "Discard all revealed dead" risk!';
     }
     if (Math.abs(ownProb - ownAdjustedProb) > 0.1) {
       reason += ' · Exchange shifts odds';

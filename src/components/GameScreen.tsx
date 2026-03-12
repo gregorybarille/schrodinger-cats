@@ -1,56 +1,112 @@
+import { useState } from 'react';
+import { IconChevronDown, IconChevronUp, IconRefresh } from '@tabler/icons-react';
 import { Button } from '@/components/ui/button';
 import { HandSelector } from './HandSelector';
 import { RevealedCards } from './RevealedCards';
 import { DiscardPileDisplay } from './DiscardPileDisplay';
 import { PhysicistSelector } from './PhysicistSelector';
-import { GameState, Hand, DiscardPile, PhysicistState, getCardsPerPlayer } from '@/lib/gameLogic';
+import { WarningBanners } from './WarningBanners';
+import { StrategicAdvicePanel } from './BidDisplay';
+import { GameState, Hand, DiscardPile, PhysicistState, Bid, getCardsPerPlayer } from '@/lib/gameLogic';
 
 interface GameScreenProps {
   gameState: GameState;
   numPlayers: number;
+  currentBid: Bid | null;
   onNumPlayersChange: (n: number) => void;
+  onReset: () => void;
+  onBidChange: (bid: Bid | null) => void;
   onHandChange: (hand: Hand) => void;
+  onMyRevealedChange: (revealed: Hand) => void;
   onRevealedChange: (revealed: Hand) => void;
   onDiscardChange: (discard: DiscardPile) => void;
   onPhysicistChange: (ps: PhysicistState) => void;
+  /** When true, PhysicistSelector is rendered in a separate column — omit it from main */
+  physicistInSidebar?: boolean;
 }
 
 export function GameScreen({
   gameState,
   numPlayers,
+  currentBid,
   onNumPlayersChange,
+  onReset,
+  onBidChange,
   onHandChange,
+  onMyRevealedChange,
   onRevealedChange,
   onDiscardChange,
   onPhysicistChange,
+  physicistInSidebar = false,
 }: GameScreenProps) {
+  const [adviceOpen, setAdviceOpen] = useState(false);
+
   return (
     <div className="space-y-4">
       {/* Number of players */}
-      <div className="flex items-center gap-3">
-        <span className="text-sm font-medium text-muted-foreground shrink-0">Players:</span>
-        <div className="flex gap-2">
-          {[2, 3, 4, 5, 6].map((n) => (
-            <Button
-              key={n}
-              variant={numPlayers === n ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => onNumPlayersChange(n)}
-              className="w-9 h-9"
-            >
-              {n}
-            </Button>
-          ))}
+      <div className="space-y-1">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-muted-foreground shrink-0">Players:</span>
+          <div className="flex gap-2">
+            {[2, 3, 4, 5, 6].map((n) => (
+              <Button
+                key={n}
+                variant={numPlayers === n ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => onNumPlayersChange(n)}
+                className="w-9 h-9"
+              >
+                {n}
+              </Button>
+            ))}
+          </div>
         </div>
-        <span className="text-xs text-muted-foreground ml-auto">
-          {gameState.cardsPerPlayer} cards each · {getCardsPerPlayer(numPlayers) * numPlayers} total
-        </span>
+        <div className="flex items-center gap-2 pl-[60px]">
+          <span className="text-xs text-muted-foreground">
+            {gameState.cardsPerPlayer} cards each · {getCardsPerPlayer(numPlayers) * numPlayers} total
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={onReset}
+            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
+            title="Reset all values"
+          >
+            <IconRefresh size={13} />
+            Reset
+          </Button>
+        </div>
+      </div>
+
+      {/* Warnings — shown at top, bid-aware */}
+      <WarningBanners gameState={gameState} currentBid={currentBid} />
+
+      {/* Strategic advice — collapsible, mobile only */}
+      <div className="lg:hidden">
+        <button
+          className="w-full flex items-center justify-between text-sm font-medium text-muted-foreground py-1 px-0"
+          onClick={() => setAdviceOpen((o) => !o)}
+        >
+          <span>Strategic Advice</span>
+          {adviceOpen ? <IconChevronUp size={16} /> : <IconChevronDown size={16} />}
+        </button>
+        {adviceOpen && (
+          <div className="mt-2">
+            <StrategicAdvicePanel
+              gameState={gameState}
+              currentBid={currentBid}
+              onBidChange={onBidChange}
+            />
+          </div>
+        )}
       </div>
 
       <HandSelector
         hand={gameState.myHand}
+        myRevealedCards={gameState.myRevealedCards}
         cardsPerPlayer={gameState.cardsPerPlayer}
         onChange={onHandChange}
+        onRevealedChange={onMyRevealedChange}
       />
 
       <RevealedCards
@@ -66,11 +122,13 @@ export function GameScreen({
         onChange={onDiscardChange}
       />
 
-      <PhysicistSelector
-        physicistState={gameState.physicistState}
-        gameState={gameState}
-        onChange={onPhysicistChange}
-      />
+      {!physicistInSidebar && (
+        <PhysicistSelector
+          physicistState={gameState.physicistState}
+          gameState={gameState}
+          onChange={onPhysicistChange}
+        />
+      )}
     </div>
   );
 }

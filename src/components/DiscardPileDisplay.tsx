@@ -39,7 +39,6 @@ export function DiscardPileDisplay({ discardPile, myHand, revealedCards, onChang
             max={maxAlive}
             colorClass="text-green-700"
             bgClass="bg-green-50 border-green-200"
-            compact
             onChange={(v) => onChange({ ...discardPile, alive: v })}
           />
           <CardCounter
@@ -49,7 +48,6 @@ export function DiscardPileDisplay({ discardPile, myHand, revealedCards, onChang
             max={maxDead}
             colorClass="text-gray-700"
             bgClass="bg-gray-50 border-gray-200"
-            compact
             onChange={(v) => onChange({ ...discardPile, dead: v })}
           />
           <CardCounter
@@ -59,7 +57,6 @@ export function DiscardPileDisplay({ discardPile, myHand, revealedCards, onChang
             max={maxBox}
             colorClass="text-orange-600"
             bgClass="bg-orange-50 border-orange-200"
-            compact
             onChange={(v) => onChange({ ...discardPile, emptyBox: v })}
           />
           <CardCounter
@@ -69,7 +66,6 @@ export function DiscardPileDisplay({ discardPile, myHand, revealedCards, onChang
             max={maxSchrodinger}
             colorClass="text-purple-700"
             bgClass="bg-purple-50 border-purple-200"
-            compact
             onChange={(v) => onChange({ ...discardPile, schrodinger: v })}
           />
           <CardCounter
@@ -79,7 +75,6 @@ export function DiscardPileDisplay({ discardPile, myHand, revealedCards, onChang
             max={52 - knownTotal}
             colorClass="text-slate-500"
             bgClass="bg-slate-50 border-slate-200"
-            compact
             onChange={(v) => onChange({ ...discardPile, unknown: v })}
           />
         </div>

@@ -2,7 +2,7 @@ import { IconFlask } from '@tabler/icons-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import {
-  PhysicistState, PhysicistId, PHYSICIST_CATS, GameState,
+  PhysicistState, PhysicistId, PhysicistActivation, PHYSICIST_CATS, GameState,
   physicistInGameProbability,
 } from '@/lib/gameLogic';
 import { cn } from '@/lib/utils';
@@ -13,48 +13,78 @@ interface PhysicistSelectorProps {
   onChange: (ps: PhysicistState) => void;
 }
 
+const CYCLE: PhysicistActivation[] = ['idle', 'active', 'discarded'];
+
+function nextActivation(current: PhysicistActivation): PhysicistActivation {
+  return CYCLE[(CYCLE.indexOf(current) + 1) % CYCLE.length];
+}
+
+function activationClasses(activation: PhysicistActivation): string {
+  if (activation === 'active')    return 'bg-amber-500 hover:bg-amber-600 border-amber-500';
+  if (activation === 'discarded') return 'bg-muted text-muted-foreground/50 border-muted line-through hover:bg-muted/80';
+  return '';
+}
+
 export function PhysicistSelector({ physicistState, gameState, onChange }: PhysicistSelectorProps) {
-  const { myPhysicist, myPhysicistPlayed, playedPhysicists, nextPlayerHasUnrevealedPhysicist } = physicistState;
+  const { myPhysicist, physicistActivations, nextPlayerHasUnrevealedPhysicist } = physicistState;
   const inGameProbs = physicistInGameProbability(gameState);
 
-  // All unknown physicist share the same probability — just pick any one.
-  const unknownProb = (() => {
-    const firstUnknown = PHYSICIST_CATS.find(
-      (cat) => cat.id !== myPhysicist && !playedPhysicists.includes(cat.id),
-    );
-    return firstUnknown ? (inGameProbs.get(firstUnknown.id) ?? 0) : 0;
-  })();
+  // All unknown physicists (not mine, not activated) share the same probability.
+  const unknownPhysicists = PHYSICIST_CATS.filter((cat) => {
+    if (cat.id === myPhysicist) return false;
+    return (physicistActivations[cat.id] ?? 'idle') === 'idle';
+  });
+  const unknownProb = unknownPhysicists.length > 0
+    ? (inGameProbs.get(unknownPhysicists[0].id) ?? 0)
+    : 0;
   const unknownPct = Math.round(unknownProb * 100);
-  const unknownCount = PHYSICIST_CATS.filter(
-    (cat) => cat.id !== myPhysicist && !playedPhysicists.includes(cat.id),
-  ).length;
 
-  const toggleMyPlayed = () => {
-    onChange({ ...physicistState, myPhysicistPlayed: !myPhysicistPlayed });
+  // ── My physicist handlers ───────────────────────────────────────────────
+
+  // Click an idle physicist in "My" section → claim it, set active.
+  // Click the already-selected one → cycle its activation.
+  // Cycling back to idle releases ownership.
+  const handleMyClick = (id: PhysicistId) => {
+    if (id !== myPhysicist) {
+      // Switch to a new physicist: clear old one's activation, claim new one as active
+      const newActivations = { ...physicistActivations };
+      if (myPhysicist) delete newActivations[myPhysicist];
+      newActivations[id] = 'active';
+      onChange({ ...physicistState, myPhysicist: id, physicistActivations: newActivations });
+    } else {
+      // Cycle the current physicist
+      const current = physicistActivations[id] ?? 'idle';
+      const next = nextActivation(current);
+      const newActivations = { ...physicistActivations };
+      if (next === 'idle') {
+        delete newActivations[id];
+        onChange({ ...physicistState, myPhysicist: null, physicistActivations: newActivations });
+      } else {
+        newActivations[id] = next;
+        onChange({ ...physicistState, physicistActivations: newActivations });
+      }
+    }
   };
 
-  const selectMyPhysicist = (id: PhysicistId | null) => {
-    onChange({
-      ...physicistState,
-      myPhysicist: id,
-      myPhysicistPlayed: false,
-      playedPhysicists: id ? playedPhysicists.filter((p) => p !== id) : playedPhysicists,
-    });
-  };
+  // ── Other physicist handlers ────────────────────────────────────────────
 
-  const toggleOtherPlayed = (id: PhysicistId) => {
-    const isPlayed = playedPhysicists.includes(id);
-    onChange({
-      ...physicistState,
-      playedPhysicists: isPlayed
-        ? playedPhysicists.filter((p) => p !== id)
-        : [...playedPhysicists, id],
-    });
+  const handleOtherClick = (id: PhysicistId) => {
+    const current = physicistActivations[id] ?? 'idle';
+    const next = nextActivation(current);
+    const newActivations = { ...physicistActivations };
+    if (next === 'idle') {
+      delete newActivations[id];
+    } else {
+      newActivations[id] = next;
+    }
+    onChange({ ...physicistState, physicistActivations: newActivations });
   };
 
   const toggleNextPlayerUnrevealed = () => {
     onChange({ ...physicistState, nextPlayerHasUnrevealedPhysicist: !nextPlayerHasUnrevealedPhysicist });
   };
+
+  const myActivation = myPhysicist ? (physicistActivations[myPhysicist] ?? 'idle') : 'idle';
 
   return (
     <Card>
@@ -66,39 +96,34 @@ export function PhysicistSelector({ physicistState, gameState, onChange }: Physi
       </CardHeader>
       <CardContent className="space-y-4">
 
-        {/* My physicist — when selected show only mine; otherwise show all */}
+        {/* ── My Physicist ── */}
         <div>
-          <p className="text-sm font-medium text-muted-foreground mb-2">My Physicist</p>
+          <p className="text-sm font-medium text-muted-foreground mb-1">My Physicist</p>
+          <p className="text-xs text-muted-foreground mb-2">
+            Tap to select · Tap again: active · Tap again: discarded · Tap again: reset
+          </p>
           {myPhysicist ? (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="default"
-                size="sm"
-                onClick={() => selectMyPhysicist(null)}
-                className="text-xs h-7 px-2"
-                title={PHYSICIST_CATS.find((c) => c.id === myPhysicist)?.name}
-              >
-                {PHYSICIST_CATS.find((c) => c.id === myPhysicist)?.effect}
-              </Button>
-              <Button
-                variant={myPhysicistPlayed ? 'default' : 'outline'}
-                size="sm"
-                onClick={toggleMyPlayed}
-                className={cn('text-xs h-6 px-2', myPhysicistPlayed && 'bg-green-600 hover:bg-green-700')}
-              >
-                {myPhysicistPlayed ? 'Played' : 'Not played'}
-              </Button>
-            </div>
+            // Collapsed: show only the selected physicist, cycling through its states
+            <Button
+              variant={myActivation === 'idle' ? 'outline' : 'default'}
+              size="sm"
+              onClick={() => handleMyClick(myPhysicist)}
+              title={`${PHYSICIST_CATS.find((c) => c.id === myPhysicist)?.name} — ${myActivation}`}
+              className={cn('text-xs h-7 px-2', activationClasses(myActivation))}
+            >
+              {PHYSICIST_CATS.find((c) => c.id === myPhysicist)?.effect}
+            </Button>
           ) : (
+            // Expanded: pick which one is mine
             <div className="flex flex-wrap gap-1.5">
               {PHYSICIST_CATS.map((cat) => (
                 <Button
                   key={cat.id}
                   variant="outline"
                   size="sm"
-                  onClick={() => selectMyPhysicist(cat.id)}
-                  className="text-xs h-7 px-2"
+                  onClick={() => handleMyClick(cat.id)}
                   title={cat.name}
+                  className="text-xs h-7 px-2"
                 >
                   {cat.effect}
                 </Button>
@@ -107,27 +132,30 @@ export function PhysicistSelector({ physicistState, gameState, onChange }: Physi
           )}
         </div>
 
-        {/* Other played physicists */}
+        {/* ── Other Physicists ── */}
         <div>
-          <p className="text-sm font-medium text-muted-foreground mb-2">Other Played Physicists</p>
+          <p className="text-sm font-medium text-muted-foreground mb-1">Other Physicists</p>
+          <p className="text-xs text-muted-foreground mb-2">
+            Tap once: active this turn · Tap twice: discarded · Tap again: reset
+          </p>
           <div className="flex flex-wrap gap-1.5">
             {PHYSICIST_CATS.filter((p) => p.id !== myPhysicist).map((cat) => {
-              const isPlayed = playedPhysicists.includes(cat.id);
+              const activation = physicistActivations[cat.id] ?? 'idle';
               return (
                 <Button
                   key={cat.id}
-                  variant={isPlayed ? 'default' : 'outline'}
+                  variant={activation === 'idle' ? 'outline' : 'default'}
                   size="sm"
-                  onClick={() => toggleOtherPlayed(cat.id)}
-                  className={cn('text-xs h-7 px-2', isPlayed && 'bg-purple-600 hover:bg-purple-700')}
-                  title={cat.name}
+                  onClick={() => handleOtherClick(cat.id)}
+                  title={`${cat.name} — ${activation}`}
+                  className={cn('text-xs h-7 px-2', activationClasses(activation))}
                 >
                   {cat.effect}
                 </Button>
               );
             })}
           </div>
-          {unknownCount > 0 && gameState.numPlayers < 10 && (
+          {unknownPhysicists.length > 0 && gameState.numPlayers < 10 && (
             <p className="text-xs text-muted-foreground mt-1.5">
               Each unknown physicist:{' '}
               <span className="font-medium tabular-nums">{unknownPct}%</span> chance held by another player
@@ -135,7 +163,7 @@ export function PhysicistSelector({ physicistState, gameState, onChange }: Physi
           )}
         </div>
 
-        {/* Next player unrevealed physicist */}
+        {/* ── Next player unrevealed physicist ── */}
         <div className="flex items-center gap-2">
           <Button
             variant={nextPlayerHasUnrevealedPhysicist ? 'default' : 'outline'}
