@@ -40,10 +40,9 @@ function App() {
         </div>
       </header>
 
-      {/* Outer wrapper: wider than main so the advice panel has room to the right */}
-      <div className="flex justify-center gap-4 px-4 py-6">
-        {/* Center column: the actual main content, same width as before */}
-        <main className="w-full max-w-lg shrink-0">
+      {/* Centered main column; aside is positioned absolutely to its right */}
+      <div className="relative max-w-lg mx-auto px-4 py-6">
+        <main>
           <GameScreen
             gameState={gameState}
             numPlayers={numPlayers}
@@ -55,9 +54,9 @@ function App() {
           />
         </main>
 
-        {/* Right side: strategic advice, sticky so it stays in view while scrolling */}
-        {/* pt-[52px] = players row height (36px) + space-y-4 gap (16px), aligns with My Hand */}
-        <aside className="hidden lg:block pt-[52px]">
+        {/* Right side: strategic advice, anchored to the right edge of main */}
+        {/* top offset: py-6 (24px) + players row (36px) + space-y-4 gap (16px) = 76px, aligns with My Hand */}
+        <aside className="hidden lg:block absolute top-[76px] left-full pl-4">
           <div className="sticky top-20">
             <StrategicAdvicePanel
               gameState={gameState}
