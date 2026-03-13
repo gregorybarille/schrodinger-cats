@@ -1,34 +1,67 @@
 import { useState } from 'react';
+import { IconRefresh } from '@tabler/icons-react';
+import { Button } from './components/ui/button';
 import { GameScreen } from './components/GameScreen';
-import { StrategicAdvicePanel } from './components/BidDisplay';
-import { GameState, Hand, Bid, getCardsPerPlayer } from './lib/gameLogic';
+import { BidScorecard, StrategicAdvicePanel } from './components/BidDisplay';
+import { PhysicistSelector } from './components/PhysicistSelector';
+import {
+  GameState, Hand, Bid, DiscardPile, PhysicistState,
+  getCardsPerPlayer, EMPTY_DISCARD, EMPTY_PHYSICIST_STATE,
+} from './lib/gameLogic';
 import './index.css';
 
 const EMPTY_HAND: Hand = { alive: 0, dead: 0, emptyBox: 0, schrodinger: 0 };
 
+function makeInitialState(n: number): GameState {
+  return {
+    numPlayers: n,
+    cardsPerPlayer: getCardsPerPlayer(n),
+    myHand: EMPTY_HAND,
+    myRevealedCards: EMPTY_HAND,
+    revealedCards: EMPTY_HAND,
+    discardPile: EMPTY_DISCARD,
+    physicistState: EMPTY_PHYSICIST_STATE,
+  };
+}
+
 function App() {
   const [numPlayers, setNumPlayers] = useState(4);
   const [currentBid, setCurrentBid] = useState<Bid | null>(null);
-  const [gameState, setGameState] = useState<GameState>({
-    numPlayers: 4,
-    cardsPerPlayer: getCardsPerPlayer(4),
-    myHand: EMPTY_HAND,
-    revealedCards: EMPTY_HAND,
-  });
+  const [gameState, setGameState] = useState<GameState>(() => makeInitialState(4));
 
   const handleNumPlayersChange = (n: number) => {
     setNumPlayers(n);
     setCurrentBid(null);
-    setGameState({
-      numPlayers: n,
-      cardsPerPlayer: getCardsPerPlayer(n),
-      myHand: EMPTY_HAND,
-      revealedCards: EMPTY_HAND,
-    });
+    setGameState(makeInitialState(n));
+  };
+
+  const handleReset = () => {
+    setCurrentBid(null);
+    setGameState(makeInitialState(numPlayers));
   };
 
   const updateGameState = (partial: Partial<GameState>) => {
     setGameState((prev) => ({ ...prev, ...partial }));
+  };
+
+  // When other players' revealed cards change, sync the discard unknown:
+  // each card that gets newly revealed by another player came with a discard.
+  const handleRevealedChange = (newRevealed: Hand) => {
+    setGameState((prev) => {
+      const oldTotal =
+        prev.revealedCards.alive + prev.revealedCards.dead +
+        prev.revealedCards.emptyBox + prev.revealedCards.schrodinger;
+      const newTotal =
+        newRevealed.alive + newRevealed.dead +
+        newRevealed.emptyBox + newRevealed.schrodinger;
+      const delta = newTotal - oldTotal;
+      const newUnknown = Math.max(0, prev.discardPile.unknown + delta);
+      return {
+        ...prev,
+        revealedCards: newRevealed,
+        discardPile: { ...prev.discardPile, unknown: newUnknown },
+      };
+    });
   };
 
   return (
@@ -40,25 +73,105 @@ function App() {
         </div>
       </header>
 
-      {/* Outer wrapper: wider than main so the advice panel has room to the right */}
-      <div className="flex justify-center gap-4 px-4 py-6">
-        {/* Center column: the actual main content, same width as before */}
-        <main className="w-full max-w-lg shrink-0">
+      {/*
+        Players row — full-width strip above the three-column area,
+        kept max-w-lg so it aligns with the main column.
+      */}
+      <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-muted-foreground shrink-0">Players:</span>
+          <div className="flex gap-2">
+            {[2, 3, 4, 5, 6].map((n) => (
+              <Button
+                key={n}
+                variant={numPlayers === n ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => handleNumPlayersChange(n)}
+                className="w-9 h-9"
+              >
+                {n}
+              </Button>
+            ))}
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {gameState.cardsPerPlayer} cards each · {getCardsPerPlayer(numPlayers) * numPlayers} total
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleReset}
+            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground gap-1 ml-auto"
+            title="Reset all values"
+          >
+            <IconRefresh size={13} />
+            Reset
+          </Button>
+        </div>
+      </div>
+
+      {/*
+        Three-column layout on lg+:
+          left aside  (280px) — PhysicistSelector
+          main        (max-w-lg, centered) — game inputs
+          right aside (280px) — BidScorecard + StrategicAdvicePanel
+
+        On small screens everything stacks in main, physicist is inline,
+        scorecard appears at bottom, advice is collapsible inside GameScreen.
+        All three columns start at top-0 of this container so their first
+        cards align vertically.
+      */}
+      <div className="relative max-w-lg mx-auto px-4 pb-6">
+        <main>
           <GameScreen
             gameState={gameState}
-            numPlayers={numPlayers}
             currentBid={currentBid}
-            onNumPlayersChange={handleNumPlayersChange}
-            onHandChange={(myHand) => updateGameState({ myHand })}
-            onRevealedChange={(revealedCards) => updateGameState({ revealedCards })}
             onBidChange={setCurrentBid}
+            onHandChange={(myHand) => updateGameState({ myHand })}
+            onMyRevealedChange={(myRevealedCards) => updateGameState({ myRevealedCards })}
+            onRevealedChange={handleRevealedChange}
+            onDiscardChange={(discardPile: DiscardPile) => updateGameState({ discardPile })}
+            onPhysicistChange={(physicistState: PhysicistState) => updateGameState({ physicistState })}
+            physicistInSidebar={true}
           />
+
+          {/* Physicist — inline on small screens only */}
+          <div className="mt-4 lg:hidden">
+            <PhysicistSelector
+              physicistState={gameState.physicistState}
+              gameState={gameState}
+              onChange={(physicistState) => updateGameState({ physicistState })}
+            />
+          </div>
+
+          {/* Scorecard — inline on small screens only */}
+          <div className="mt-4 lg:hidden">
+            <BidScorecard
+              gameState={gameState}
+              currentBid={currentBid}
+              onBidChange={setCurrentBid}
+            />
+          </div>
         </main>
 
-        {/* Right side: strategic advice, sticky so it stays in view while scrolling */}
-        {/* pt-[52px] = players row height (36px) + space-y-4 gap (16px), aligns with My Hand */}
-        <aside className="hidden lg:block pt-[52px]">
+        {/* Left aside — PhysicistSelector, large screens only */}
+        <aside className="hidden lg:block absolute top-0 right-full pr-4 w-[280px]">
           <div className="sticky top-20">
+            <PhysicistSelector
+              physicistState={gameState.physicistState}
+              gameState={gameState}
+              onChange={(physicistState) => updateGameState({ physicistState })}
+            />
+          </div>
+        </aside>
+
+        {/* Right aside — scorecard + strategic advice, large screens only */}
+        <aside className="hidden lg:block absolute top-0 left-full pl-4 w-[280px]">
+          <div className="sticky top-20 space-y-4">
+            <BidScorecard
+              gameState={gameState}
+              currentBid={currentBid}
+              onBidChange={setCurrentBid}
+            />
             <StrategicAdvicePanel
               gameState={gameState}
               currentBid={currentBid}
