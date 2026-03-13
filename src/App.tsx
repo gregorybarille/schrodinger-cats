@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { IconRefresh } from '@tabler/icons-react';
+import { Button } from './components/ui/button';
 import { GameScreen } from './components/GameScreen';
 import { BidScorecard, StrategicAdvicePanel } from './components/BidDisplay';
 import { PhysicistSelector } from './components/PhysicistSelector';
@@ -72,6 +74,42 @@ function App() {
       </header>
 
       {/*
+        Players row — full-width strip above the three-column area,
+        kept max-w-lg so it aligns with the main column.
+      */}
+      <div className="max-w-lg mx-auto px-4 pt-6 pb-4">
+        <div className="flex items-center gap-3">
+          <span className="text-sm font-medium text-muted-foreground shrink-0">Players:</span>
+          <div className="flex gap-2">
+            {[2, 3, 4, 5, 6].map((n) => (
+              <Button
+                key={n}
+                variant={numPlayers === n ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => handleNumPlayersChange(n)}
+                className="w-9 h-9"
+              >
+                {n}
+              </Button>
+            ))}
+          </div>
+          <span className="text-xs text-muted-foreground">
+            {gameState.cardsPerPlayer} cards each · {getCardsPerPlayer(numPlayers) * numPlayers} total
+          </span>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleReset}
+            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground gap-1 ml-auto"
+            title="Reset all values"
+          >
+            <IconRefresh size={13} />
+            Reset
+          </Button>
+        </div>
+      </div>
+
+      {/*
         Three-column layout on lg+:
           left aside  (280px) — PhysicistSelector
           main        (max-w-lg, centered) — game inputs
@@ -79,15 +117,14 @@ function App() {
 
         On small screens everything stacks in main, physicist is inline,
         scorecard appears at bottom, advice is collapsible inside GameScreen.
+        All three columns start at top-0 of this container so their first
+        cards align vertically.
       */}
-      <div className="relative max-w-lg mx-auto px-4 py-6">
+      <div className="relative max-w-lg mx-auto px-4 pb-6">
         <main>
           <GameScreen
             gameState={gameState}
-            numPlayers={numPlayers}
             currentBid={currentBid}
-            onNumPlayersChange={handleNumPlayersChange}
-            onReset={handleReset}
             onBidChange={setCurrentBid}
             onHandChange={(myHand) => updateGameState({ myHand })}
             onMyRevealedChange={(myRevealedCards) => updateGameState({ myRevealedCards })}
@@ -117,7 +154,7 @@ function App() {
         </main>
 
         {/* Left aside — PhysicistSelector, large screens only */}
-        <aside className="hidden lg:block absolute top-[76px] right-full pr-4 w-[280px]">
+        <aside className="hidden lg:block absolute top-0 right-full pr-4 w-[280px]">
           <div className="sticky top-20">
             <PhysicistSelector
               physicistState={gameState.physicistState}
@@ -128,7 +165,7 @@ function App() {
         </aside>
 
         {/* Right aside — scorecard + strategic advice, large screens only */}
-        <aside className="hidden lg:block absolute top-[76px] left-full pl-4 w-[280px]">
+        <aside className="hidden lg:block absolute top-0 left-full pl-4 w-[280px]">
           <div className="sticky top-20 space-y-4">
             <BidScorecard
               gameState={gameState}

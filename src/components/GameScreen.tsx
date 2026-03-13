@@ -1,20 +1,16 @@
 import { useState } from 'react';
-import { IconChevronDown, IconChevronUp, IconRefresh } from '@tabler/icons-react';
-import { Button } from '@/components/ui/button';
+import { IconChevronDown, IconChevronUp } from '@tabler/icons-react';
 import { HandSelector } from './HandSelector';
 import { RevealedCards } from './RevealedCards';
 import { DiscardPileDisplay } from './DiscardPileDisplay';
 import { PhysicistSelector } from './PhysicistSelector';
 import { WarningBanners } from './WarningBanners';
 import { StrategicAdvicePanel } from './BidDisplay';
-import { GameState, Hand, DiscardPile, PhysicistState, Bid, getCardsPerPlayer } from '@/lib/gameLogic';
+import { GameState, Hand, DiscardPile, PhysicistState, Bid } from '@/lib/gameLogic';
 
 interface GameScreenProps {
   gameState: GameState;
-  numPlayers: number;
   currentBid: Bid | null;
-  onNumPlayersChange: (n: number) => void;
-  onReset: () => void;
   onBidChange: (bid: Bid | null) => void;
   onHandChange: (hand: Hand) => void;
   onMyRevealedChange: (revealed: Hand) => void;
@@ -27,10 +23,7 @@ interface GameScreenProps {
 
 export function GameScreen({
   gameState,
-  numPlayers,
   currentBid,
-  onNumPlayersChange,
-  onReset,
   onBidChange,
   onHandChange,
   onMyRevealedChange,
@@ -43,41 +36,6 @@ export function GameScreen({
 
   return (
     <div className="space-y-4">
-      {/* Number of players */}
-      <div className="space-y-1">
-        <div className="flex items-center gap-3">
-          <span className="text-sm font-medium text-muted-foreground shrink-0">Players:</span>
-          <div className="flex gap-2">
-            {[2, 3, 4, 5, 6].map((n) => (
-              <Button
-                key={n}
-                variant={numPlayers === n ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => onNumPlayersChange(n)}
-                className="w-9 h-9"
-              >
-                {n}
-              </Button>
-            ))}
-          </div>
-        </div>
-        <div className="flex items-center gap-2 pl-[60px]">
-          <span className="text-xs text-muted-foreground">
-            {gameState.cardsPerPlayer} cards each · {getCardsPerPlayer(numPlayers) * numPlayers} total
-          </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={onReset}
-            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground gap-1"
-            title="Reset all values"
-          >
-            <IconRefresh size={13} />
-            Reset
-          </Button>
-        </div>
-      </div>
-
       {/* Warnings — shown at top, bid-aware */}
       <WarningBanners gameState={gameState} currentBid={currentBid} />
 
